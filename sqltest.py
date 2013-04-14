@@ -1,20 +1,17 @@
-from pyparsing import ParseException
-from sqlparser import * 
+import unittest
+from sqlparser import *
 
-def test(parser, string):
-	try:
-		tokens = parser.parseString( string )
-	except ParseException, err:
-		print string,"->"
-		print " "*err.loc + "^\n" + err.msg
-		print err
-		print
+class ParsingTests(unittest.TestCase):
+	def test_dataType(self):
+		dataType.parseString("int(11) NOT NULL auto_increment")
 
-test(dataType,"int(11) NOT NULL auto_increment")
-test(columnDescription,'"ip" text NOT NULL')
-test(columnDescription,'"id" int(11) NOT NULL auto_increment')
-test(columnDescription,""""date" datetime NOT NULL default '0000-00-00 00:00:00'""")
-test(delimitedList(columnDescription,","),"""
+	def test_columnDescription(self):
+		columnDescription.parseString('"ip" text NOT NULL')
+		columnDescription.parseString('"id" int(11) NOT NULL auto_increment')
+		columnDescription.parseString(""""date" datetime NOT NULL default '0000-00-00 00:00:00'""")
+
+	def test_columnDescriptionList(self):
+		delimitedList(columnDescription,",").parseString("""
   "id" int(11) NOT NULL auto_increment,
   "ip" text NOT NULL,
   "date" datetime NOT NULL default '0000-00-00 00:00:00',
@@ -24,19 +21,23 @@ test(delimitedList(columnDescription,","),"""
   "http_headers" text NOT NULL,
   "user_agent" text NOT NULL,
   "request_entity" text NOT NULL,
-  "key" text NOT NULL,""")
-test(keyDescription,'KEY "user_agent" ("user_agent"(10)) ')
+  "key" text NOT NULL"""
+		)
 
+	def test_keyDescription(self):
+		keyDescription.parseString('KEY "user_agent" ("user_agent"(10)) ')
+		primaryKeyDescription.parseString(' PRIMARY KEY  ("id") ')
+		keyDescription.parseString(' KEY "ip" ("ip"(15)) ')
 
-test(primaryKeyDescription,' PRIMARY KEY  ("id") ')
-test(keyDescription,' KEY "ip" ("ip"(15)) ')
-test(delimitedList(keyDescription | primaryKeyDescription,","), """
+	def test_keyDescriptionList(self):
+		delimitedList(keyDescription ^ primaryKeyDescription,",").parseString("""
   PRIMARY KEY  ("id"),
   KEY "ip" ("ip"(15)),
-  KEY "user_agent" ("user_agent"(10))
-""")
+  KEY "user_agent" ("user_agent"(10))"""
+		)
 
-test(delimitedList(keyDescription | columnDescription,","),"""
+	def test_keyColumnDescriptionList(self):
+		delimitedList(keyDescription ^ primaryKeyDescription ^ columnDescription,",").parseString("""
   "id" int(11) NOT NULL auto_increment,
   "ip" text NOT NULL,
   "date" datetime NOT NULL default '0000-00-00 00:00:00',
@@ -49,21 +50,22 @@ test(delimitedList(keyDescription | columnDescription,","),"""
   "key" text NOT NULL,
   PRIMARY KEY  ("id"),
   KEY "ip" ("ip"(15)),
-  KEY "user_agent" ("user_agent"(10))
-""")
+  KEY "user_agent" ("user_agent"(10))"""
+		)
 
-
-test(createTableStmt,"""
+	def test_createTableStmt(self):
+		createTableStmt.parseString("""
 CREATE TABLE IF NOT EXISTS "bad_behavior" (
   "id" int(11) NOT NULL auto_increment,
   "ip" text NOT NULL,
   PRIMARY KEY  ("id"),
   KEY "ip" ("ip"(15))
-) AUTO_INCREMENT=1 ;
-""")
+) AUTO_INCREMENT=1 ;"""
+		)
 
-test(createTableStmt,"""
-CREATE TABLE IF NOT EXISTS "bad_behavior" ( "id" int(11) NOT NULL auto_increment, "ip" text NOT NULL, "date" datetime NOT NULL default '0000-00-00 00:00:00', "request_method" text NOT NULL, "request_uri" text NOT NULL, "server_protocol" text NOT NULL, "http_headers" text NOT NULL, "user_agent" text NOT NULL, "request_entity" text NOT NULL, "key" text NOT NULL, PRIMARY KEY  ("id"), KEY "ip" ("ip"(15)), KEY "user_agent" ("user_agent"(10)) ) ;
-""")
+		createTableStmt.parseString("""
+CREATE TABLE IF NOT EXISTS "bad_behavior" ( "id" int(11) NOT NULL auto_increment, "ip" text NOT NULL, "date" datetime NOT NULL default '0000-00-00 00:00:00', "request_method" text NOT NULL, "request_uri" text NOT NULL, "server_protocol" text NOT NULL, "http_headers" text NOT NULL, "user_agent" text NOT NULL, "request_entity" text NOT NULL, "key" text NOT NULL, PRIMARY KEY  ("id"), KEY "ip" ("ip"(15)), KEY "user_agent" ("user_agent"(10)) ) ;"""
+		)
 
-
+if __name__ == '__main__':
+	unittest.main()
