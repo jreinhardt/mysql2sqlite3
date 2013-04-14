@@ -12,6 +12,9 @@ defaultToken = Keyword("default")
 autoincrementToken = Keyword("auto_increment")
 keyToken = Keyword("key")
 primaryToken = Keyword("primary")
+insertToken = Keyword("insert")
+intoToken = Keyword("into")
+valuesToken = Keyword("values")
 
 ident = Word( alphas, alphanums + "_$" ) | QuotedString('"') | QuotedString("`")
 
@@ -27,18 +30,15 @@ createTableStmt = createToken + tableToken + ifneToken + ident + Literal("(") + 
 
 createDataBaseStmt = createToken + databaseToken + ident + dcsToken + Word(alphanums) + collateToken + ident
 
-useStmt = useToken + ident;
+useStmt = useToken + ident
 
 comment = LineStart() + Literal("--") + Word(printables) + LineEnd()
 
-statement = ((createTableStmt ^ createDataBaseStmt ^ useStmt)  + Literal(";")) ^ comment
+value = Literal("(") + delimitedList(Word(nums) ^ QuotedString("'",multiline=True)) + Literal(")")
 
-createStatement = createTableStmt
+insertStmt = insertToken + intoToken + ident + Literal("(") + delimitedList(ident) + Literal(")") + valuesToken + delimitedList(value)
 
-def test(parser, string):
-	tokens = parser.parseString( string )
-	print string
-	print tokens
+statement = ((createTableStmt ^ createDataBaseStmt ^ useStmt ^ insertStmt)  + Literal(";")) ^ comment
 
 
-
+sql = ZeroOrMore(statement)
