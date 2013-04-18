@@ -1,44 +1,73 @@
-from pyparsing import Literal, Word, CaselessKeyword as Keyword, delimitedList, Optional, alphas, nums, alphanums, Forward, oneOf, QuotedString, ZeroOrMore, ParseException, Group, Combine, LineStart, LineEnd, printables
+from pyparsing import Literal, Word, CaselessKeyword as Keyword, delimitedList, Optional, alphas, nums, alphanums, Forward, oneOf, QuotedString, ZeroOrMore, ParseException, Group, Combine, LineStart, LineEnd, printables, StringEnd, CharsNotIn, White
 
-createToken = Keyword("create")
-databaseToken = Keyword("database")
-tableToken = Keyword("table")
-ifneToken = Keyword("if") + Keyword("not") + Keyword("exists")
-nnToken = Keyword("not") + Keyword("null")
-collateToken = Keyword("collate")
-dcsToken = Keyword("default") + Keyword("character") + Keyword("set")
-useToken = Keyword("use")
-defaultToken = Keyword("default")
-autoincrementToken = Keyword("auto_increment")
-keyToken = Keyword("key")
-primaryToken = Keyword("primary")
-insertToken = Keyword("insert")
-intoToken = Keyword("into")
-valuesToken = Keyword("values")
+def convert_datatypes(toks):
+	if toks[0] == 'int' or toks[0] == 'mediumint' or toks[0] == 'bigint':
+		return ["integer"] + toks[2:]
+	if toks[0] == "enum":
+		return ["varchar(255)"] + toks[3:]
 
-ident = Word( alphas, alphanums + "_$" ) | QuotedString('"') | QuotedString("`")
+def rebuild_createtable(toks):
+	ts = toks.asList()
+	return ts[0] + [", ".join([" ".join(t) for t in ts[1:-1]])] + ts[-1]		
 
-columnName = Group(delimitedList( ident, "."))
-tableName = Group(delimitedList( ident, "."))
-dataType = Word(alphas) + Optional(Literal("(") + Word(nums) + Literal(")")) + ZeroOrMore(nnToken ^ autoincrementToken ^ (defaultToken + QuotedString("'")))
+def rebuild_insert(toks):
+	ts = toks.asList()
+	res = []
+	prefix = ts[0][:4] + [", ".join(ts[0][4:-2])] + ts[0][-2:]
+	for vs in ts[1:]:
+		value = [vs[0] + ", ".join(vs[1:-1]) + vs[-1]]
+		res += prefix + value + [";\n"]
+	return res
+createToken = Keyword("CREATE")
+databaseToken = Keyword("DATABASE")
+tableToken = Keyword("TABLE")
+ifneToken = Keyword("IF") + Keyword("NOT") + Keyword("EXISTS")
+nullToken = Keyword("NULL")
+nnToken = Keyword("NOT") + nullToken
+collateToken = Keyword("COLLATE")
+dcsToken = Keyword("DEFAULT") + Keyword("CHARACTER") + Keyword("SET")
+useToken = Keyword("USE")
+defaultToken = Keyword("DEFAULT")
+unsignedToken = Keyword("UNSIGNED")
+autoincrementToken = Keyword("AUTO_INCREMENT")
+autoincrementToken.setParseAction(lambda toks: ["PRIMARY KEY AUTOINCREMENT"])
+keyToken = Keyword("KEY")
+primaryToken = Keyword("PRIMARY")
+uniqueToken = Keyword("UNIQUE")
+insertToken = Keyword("INSERT")
+intoToken = Keyword("INTO")
+valuesToken = Keyword("VALUES")
+
+ident = Word(alphas, alphanums + "_$" ) ^ QuotedString('"') ^ QuotedString("`")
+ident.setParseAction(lambda toks: ['"%s"' % toks[0]])
+string = QuotedString("'",multiline=True)
+string.setParseAction(lambda toks: ["'%s'" % toks[0]])
+
+columnName = delimitedList( ident, ".",combine=True)
+tableName = delimitedList( ident, ".",combine=True)
+dataType = Word(alphas) + Combine(Optional(Literal("(") + (Word(nums) ^ delimitedList(string,combine=True)) + Literal(")"))) + ZeroOrMore(nnToken ^ autoincrementToken ^ (defaultToken + (string ^ nullToken)) ^ unsignedToken.suppress() )
+dataType.setParseAction(convert_datatypes)
 
 columnDescription = Group(ident + dataType)
-keyDescription = Group(keyToken + (ident) + Literal("(") + ident + Literal("(") + Word(nums) + Literal(")") + Literal(")"))
-primaryKeyDescription = Group(primaryToken + keyToken + Literal("(") + ident + Literal(")"))
+keyDescription = Optional(primaryToken ^ uniqueToken) + keyToken + Optional(ident) + Literal("(") + delimitedList(ident + Optional(Literal("(") + Word(nums) + Literal(")"))) + Literal(")")
 
-createTableStmt = createToken + tableToken + ifneToken + ident + Literal("(") + delimitedList(columnDescription ^ keyDescription ^ primaryKeyDescription) + Literal(")") + Optional(autoincrementToken + Literal("=") + Word(nums))
+createTableStmt = Group(createToken + tableToken + ifneToken + ident + Literal("(")) + delimitedList(columnDescription ^ keyDescription.suppress()) + Group(Literal(")")) + Optional(autoincrementToken + Literal("=") + Word(nums)).suppress()
+createTableStmt.setParseAction(rebuild_createtable)
 
-createDataBaseStmt = createToken + databaseToken + ident + dcsToken + Word(alphanums) + collateToken + ident
 
-useStmt = useToken + ident
+createDataBaseStmt = Group(createToken + databaseToken + ident +  dcsToken + Word(alphanums)+ collateToken + ident)
 
-comment = LineStart() + Literal("--") + Word(printables) + LineEnd()
+useStmt = Group(useToken + ident)
 
-value = Literal("(") + delimitedList(Word(nums) ^ QuotedString("'",multiline=True)) + Literal(")")
+comment = LineStart() + CharsNotIn("\n") + LineEnd()
 
-insertStmt = insertToken + intoToken + ident + Literal("(") + delimitedList(ident) + Literal(")") + valuesToken + delimitedList(value)
+value = Group(Literal("(") + delimitedList(Word(nums) ^ string) + Literal(")"))
 
-statement = ((createTableStmt ^ createDataBaseStmt ^ useStmt ^ insertStmt)  + Literal(";")) ^ comment
+insertPrefix = Group(insertToken + intoToken + ident + Literal("(") + delimitedList(ident) + Literal(")") + valuesToken)
 
+insertStmt = insertPrefix + delimitedList(value)
+insertStmt.setParseAction(rebuild_insert)
+
+statement = ((createTableStmt ^ createDataBaseStmt.suppress() ^ useStmt.suppress() ^ insertStmt)  + Literal(";").setParseAction(lambda: [";\n"])) ^ comment.suppress() ^ White().suppress()
 
 sql = ZeroOrMore(statement)
